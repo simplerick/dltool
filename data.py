@@ -13,6 +13,25 @@ def get_batch(dataloader):
         return next(dataloader._iterator)
 
 
+def with_transforms(cls):
+    def _with_transforms(self, transforms):
+        self.transforms = transforms
+        return self
+
+    def _getitem(self, *args, **kwargs):
+        x = cls.__getitem__(self, *args, **kwargs)
+        for t in self.transforms:
+            x = t(x)
+        return x
+
+    class DatasetWithTransforms(cls):
+        with_transforms = _with_transforms
+        __getitem__ = _getitem
+
+    return DatasetWithTransforms
+
+
+@with_transforms
 class SequenceDataset(Dataset):
     def __init__(self, path, metadata=None, max_metadata_size=1024):
         self.file = Path(path)
