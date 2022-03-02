@@ -38,6 +38,7 @@ class Trainer:
                 self.opt_step(loss, self.optimizer, self.scheduler)
                 self._step_count += 1
                 if self.write_logs:
+                    self.logger.log({"epochs": self._step_count / len(dataloader)}, self._step_count)
                     self.logger.log({"hparams/lr": self.scheduler.get_last_lr()[0]}, self._step_count)
 
     def fit(self, epochs, train_dataloader, val_dataloader=None):

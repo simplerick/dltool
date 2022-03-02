@@ -25,6 +25,7 @@ def with_transforms(cls):
         return x
 
     class DatasetWithTransforms(cls):
+        transforms = []
         with_transforms = _with_transforms
         __getitem__ = _getitem
 
