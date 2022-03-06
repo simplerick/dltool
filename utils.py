@@ -2,16 +2,24 @@ import torch
 from contextlib import contextmanager
 
 
-def to(obj, **args):
-    if hasattr(obj, 'to'):
-        obj = obj.to(**args)
+def apply(obj, func, **args):
+    if hasattr(obj, func):
+        obj = getattr(obj, func)(**args)
     else:
         if isinstance(obj, list):
-            obj[:] = [to(x, **args) for x in obj]
+            obj[:] = [apply(x, func, **args) for x in obj]
         if isinstance(obj, dict):
             for k in obj:
-                obj[k] = to(obj[k], **args)
+                obj[k] = apply(obj[k], func, **args)
     return obj
+
+
+def to(obj, **args):
+    return apply(obj, "to", **args)
+
+
+def detach(obj):
+    return apply(obj, "detach")
 
 
 # context manager for evaluating
