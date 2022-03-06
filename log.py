@@ -32,7 +32,7 @@ class Logger:
         self.log_freq = log_freq
         self._log_step = 0  # data will be written with this step value
         self._step = 0  # last step
-        self._data_storage: [dict] = []
+        self._data_storage: dict = defaultdict(list)
 
     def log(self, metrics, step: int, group: str = None):
         self._step = step
@@ -44,22 +44,23 @@ class Logger:
             self._log_step = step - ix
         self.store(metrics, group)
 
-    def store(self, metrics, group: str):
+    def store(self, metrics, group: str = None):
         if isinstance(metrics, dict):
-            group_str = f"{group}/" if group is not None else ""
-            self._data_storage.append(
-                {group_str+n: m for n, m in metrics.items()})
+            self._data_storage[group].append(metrics)
         if isinstance(metrics, list):
-            for d in metrics:
-                self.store(d, group)
+            self._data_storage[group].extend(metrics)
 
     def flush(self):
-        self.api.log(average(self._data_storage), self._log_step)
-        self._data_storage = []
+        for g, data in self._data_storage.items():
+            g_str = f"{g}/" if g is not None else ""
+            self.api.log(
+                {g_str+n: m for n, m in average(data).items()}, self._log_step)
+        self._data_storage = defaultdict(list)
 
-    def plot(self, x_key, y_key, stroke=None, title=None):
-        y, x = average(self._data_storage, condition_on=x_key)[y_key]
+    def plot(self, x_key, y_key, group=None, stroke=None, title=None):
+        y, x = average(self._data_storage[group], condition_on=x_key)[y_key]
         data = list(zip(x, y))
+        y_key = f"{group}/{y_key}" if group is not None else y_key
         table = self.api.Table(data=data, columns=[x_key, y_key])
-        self.api.log({f"{y_key}/{x_key}": self.api.plot.line(table, x_key, y_key,
+        self.api.log({f"{y_key}:{x_key}": self.api.plot.line(table, x_key, y_key,
                                                              stroke=stroke, title=title)})
