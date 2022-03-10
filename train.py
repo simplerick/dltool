@@ -15,7 +15,7 @@ class Trainer:
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.val_check_interval = val_check_interval
-        self.device = next(self.model.parameters()).device
+        self.device = next(self.model.parameters(), torch.empty(0)).device
         self.best_model_state = to(self.model.state_dict(), device='cpu')
         self._step_count = 0
         self.logger = Logger(logger, log_interval)
