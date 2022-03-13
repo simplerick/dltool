@@ -8,7 +8,7 @@ from pathlib import Path
 def get_batch(dataloader):
     try:
         return next(dataloader._iterator)
-    except (TypeError, StopIteration):
+    except (AttributeError, TypeError, StopIteration):
         dataloader._iterator = dataloader.__iter__()
         return next(dataloader._iterator)
 
