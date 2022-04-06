@@ -1,4 +1,4 @@
-# PyTorch wrapper
+# Small library with handy methods for DL with Pytorch
 
 ## TODO: 
 
