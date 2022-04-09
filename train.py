@@ -1,10 +1,8 @@
 import warnings
-from tqdm import tqdm
 import torch
 from dltool.data import get_batch
 from dltool.log import Logger
 from dltool.utils import to, detach, evaluating
-from collections import defaultdict
 import numpy as np
 
 
@@ -32,6 +30,7 @@ class Trainer:
             batch = to(get_batch(dataloader), device=self.device)
             loss, metrics = step_fn(batch, self._step_count)
             metrics = detach(metrics)  # detach tensors if they are attached to graph
+            metrics = to(metrics, device='cpu')
             fn_name = step_fn.__name__
             self.logger.log(metrics, self._step_count, group=fn_name)
             if optimize:
