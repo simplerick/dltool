@@ -89,7 +89,7 @@ class SequenceDataset(Dataset):
                     self._read_attrs(byte_str)
                     metadata = True
                 if t_attrs.items() <= self._attrs.items():
-                    file.write(t.numpy().tobytes())
+                    file.write(t.cpu().numpy().tobytes())
                     self.length += 1
                 else:
                     raise ValueError("tensor shape or dtype doesn't match with template")

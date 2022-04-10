@@ -31,7 +31,7 @@ def img_grid(t_array, normalize=False, ncols=8, captions=None, pad=1):
         array = (array - amin) / (amax - amin + 1e-5)
     # add padding
     padding = [(0, 0), (pad, pad), (pad, pad), (0, 0)]
-    array = np.pad(array.numpy(), padding, 'constant')
+    array = np.pad(array.cpu().numpy(), padding, 'constant')
     # captions
     if captions is not None:
         for i in range(array.shape[0]):
