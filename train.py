@@ -2,7 +2,7 @@ import warnings
 import torch
 from dltool.data import get_batch
 from dltool.log import Logger
-from dltool.utils import to, detach, evaluating
+from dltool.utils import to, detach, evaluating, cpu_state_dict
 import numpy as np
 
 
@@ -14,10 +14,14 @@ class Trainer:
         self.scheduler = scheduler
         self.val_check_interval = val_check_interval
         self.device = next(self.model.parameters(), torch.empty(0)).device
-        self.best_model_state = to(self.model.state_dict(), device='cpu')
-        self._step_count = 0
         self.logger = Logger(logger, log_interval)
         self.logger.api.define_metric("Epoch", hidden=True)
+        self._step_count = 0
+        self.best_model_state = None
+        self.val_hooks = []
+
+    def fix_best_state(self):
+        self.best_model_state = cpu_state_dict(self.model)
 
     def opt_step(self, loss, optimizer, scheduler):
         loss.backward()
@@ -54,11 +58,28 @@ class Trainer:
                 with evaluating(self.model):
                     self.loop(len(val_dataloader), val_dataloader, self.algorithm.val_step)
                 self.logger.flush()
+            # hooks
+            try:
+                for fn in self.val_hooks:
+                    fn(self)
+            except Exception as e:
+                warnings.warn(str(e))
+                break
+        # load best model if any is saved
+        if self.best_model_state is not None:
+            self.model.load_state_dict(self.best_model_state)
 
     def test(self, test_dataloader):
         # testing loop
         with evaluating(self.model):
             self.loop(len(test_dataloader), test_dataloader, self.algorithm.test_step)
+
+    def set_opt_goal(self, metric, select_fn=min):
+        def keep_best_model(self):
+            if select_fn(self.logger.history[metric]) == self.logger.history[metric][-1]:
+                self.fix_best_state()
+        self.val_hooks.append(keep_best_model)
+
 
     # def sanity_check(self, batch, max_iter=100, criterion=1e-4):
     #     dl = torch.utils.data.DataLoader([batch])

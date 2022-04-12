@@ -33,6 +33,7 @@ class Logger:
         self._log_step = 0  # data will be written with this step value
         self._step = 0  # last step
         self._data_storage: dict = defaultdict(list)  # {group : [{metric_name: value}, {metric_name: value}]}
+        self.history = defaultdict(list)
 
     def log(self, metrics, step: int, group: str = None):
         self._step = step
@@ -57,8 +58,10 @@ class Logger:
         for g, data in self._data_storage.items():
             g_str = f"{g}/" if g is not None else ""
             averaged_metrics = {g_str + n: m for n, m in average(data).items() if
-                                (metrics_to_write is None or m in metrics_to_write)}
+                                (metrics_to_write is None or n in metrics_to_write)}
             self.api.log(averaged_metrics, self._log_step)
+            for n, v in averaged_metrics.items():
+                self.history[n].append(v)
         self.clear()
 
     def plot(self, x_key, y_key, group=None, stroke=None, title=None):

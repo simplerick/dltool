@@ -21,11 +21,11 @@ def put_caption(img, text):
     cv2.putText(img, text, (text_offset_x, text_offset_y), font, fontScale=font_scale, color=(1., 1., 1.), thickness=1)
 
 
-def img_grid(t_array, normalize=False, ncols=8, captions=None, pad=1):
+def img_grid(t_array, normalize=False, ncols=8, captions=None, pad=1, channel_dim=1):
     """
-    Makes grid from batch of images with shape (n_batch, channels, height, width)
+    Makes grid from batch of images with default shape (n_batch, channels, height, width). Indicate the channel dim if its order is different.
     """
-    array = t_array.detach().permute(0, 2, 3, 1)
+    array = t_array.detach().movedim(channel_dim, -1)
     if normalize is True:
         amin, amax = array.amin(dim=[0, 1, 2]), array.amax(dim=[0, 1, 2])
         array = (array - amin) / (amax - amin + 1e-5)

@@ -22,6 +22,10 @@ def detach(obj):
     return apply(obj, "detach")
 
 
+def cpu_state_dict(model):
+    return to(model.state_dict(), device='cpu')
+
+
 # context manager for evaluating
 @contextmanager
 def evaluating(model):
