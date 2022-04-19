@@ -2,13 +2,13 @@ import cv2
 import numpy as np
 import numbers
 import torch
-from typing import Union, Tuple
+from typing import Union, Sequence
 
 
 def scale(t: torch.Tensor, min_value: float = 0,
-          max_value: float = 1, dim: Union[int, Tuple[int, ...]] = None) -> torch.Tensor:
+          max_value: float = 1, dim: Union[int, Sequence[int]] = None) -> torch.Tensor:
     """
-    Scale the tensor values so that they lie between specified boundary values.
+    Scales the tensor values so that they lie between specified boundary values.
 
     Args:
         t: initial tensor
@@ -29,7 +29,7 @@ def scale(t: torch.Tensor, min_value: float = 0,
 
 def put_caption(img: np.ndarray, text: str):
     """
-    Place a small white colored caption in the upper left corner of the image array.
+    Places a small white colored caption in the upper left corner of the image array.
 
     Args:
         img: image array with shape (height,width,channels)
@@ -52,7 +52,7 @@ def put_caption(img: np.ndarray, text: str):
     cv2.putText(img, text, (text_offset_x, text_offset_y), font, fontScale=font_scale, color=(1., 1., 1.), thickness=1)
 
 
-def make_grid(t: torch.Tensor, normalize: bool = False, ncols: int = 8, captions: Tuple[str, ...] = None, pad: int = 1,
+def make_grid(t: torch.Tensor, normalize: bool = False, ncols: int = 8, captions: Sequence[str] = None, pad: int = 1,
               channel_dim: int = 1) -> np.ndarray:
     """
     Makes grid from batch of images with default shape (n, channels, height, width).

@@ -75,10 +75,10 @@ class Trainer:
             self.loop(len(test_dataloader), test_dataloader, self.algorithm.test_step)
 
     def set_opt_goal(self, metric, select_fn=min):
-        def keep_best_model(self):
-            if select_fn(self.logger.history[metric]) == self.logger.history[metric][-1]:
-                self.fix_best_state()
-        self.val_hooks.append(keep_best_model)
+        def save_model_checkpoints(obj):
+            if len(obj.logger.history[metric]) > 0 and select_fn(self.logger.history[metric]) == self.logger.history[metric][-1]:
+                obj.fix_best_state()
+        self.val_hooks.append(save_model_checkpoints)
 
 
     # def sanity_check(self, batch, max_iter=100, criterion=1e-4):

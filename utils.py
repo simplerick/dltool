@@ -2,35 +2,83 @@ import torch
 from contextlib import contextmanager
 
 
-def apply(obj, func, **args):
-    if hasattr(obj, func):
-        obj = getattr(obj, func)(**args)
+def apply(obj: object, func_str: str, **args) -> object:
+    """
+    Applies the specified method to the object;
+    if there is no such method, it recursively bypasses the object and tries to apply the method to its child objects.
+
+    Args:
+        obj: object
+        func_str: method name
+        **args: arguments to be passed to the method
+
+    Returns:
+        Resulting object, note that it is not necessarily a copy of the original object
+    """
+    if hasattr(obj, func_str):
+        obj = getattr(obj, func_str)(**args)
     else:
         if isinstance(obj, list):
-            obj[:] = [apply(x, func, **args) for x in obj]
+            obj[:] = [apply(x, func_str, **args) for x in obj]
         if isinstance(obj, dict):
             for k in obj:
-                obj[k] = apply(obj[k], func, **args)
+                obj[k] = apply(obj[k], func_str, **args)
     return obj
 
 
-def to(obj, **args):
+def to(obj: object, **args) -> object:
+    """
+    Applies the "to" method to the object;
+    if there is no such method, it recursively bypasses the object and tries to apply the method to its child objects.
+
+    Args:
+        obj: object
+        **args: arguments to be passed to the "to" method
+
+    Returns:
+        Resulting object, note that it is not necessarily a copy of the original object
+    """
     return apply(obj, "to", **args)
 
 
-def detach(obj):
+def detach(obj: object) -> object:
+    """
+    Applies the "detach" method to the object;
+    if there is no such method, it recursively bypasses the object and tries to apply the method to its child objects.
+
+    Args:
+        obj: object
+
+    Returns:
+        Resulting object, note that it is not necessarily a copy of the original object
+    """
     return apply(obj, "detach")
 
 
-def cpu_state_dict(model):
+def cpu_state_dict(model: torch.nn.Module) -> dict:
+    """
+    Returns the model state dict in CPU memory.
+
+    Args:
+        model: torch module
+
+    Returns:
+        Dictionary containing a whole state of the module.
+    """
     return to(model.state_dict(), device='cpu')
 
 
 # context manager for evaluating
 @contextmanager
-def evaluating(model):
-    """Temporarily switch to evaluation mode. Keeps original training state of every submodule"""
+def evaluating(model: torch.nn.Module):
+    """
+    Context-manager that temporarily switches the model to evaluation mode. Restores the initial training state of each submodule on exit.
+
+    Args:
+        model: torch module
+    """
     with torch.no_grad():
+        # save initial training state
         train_state = dict((m, m.training) for m in model.modules())
         try:
             model.eval()
