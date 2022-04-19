@@ -29,9 +29,9 @@ class Algorithm(ABC):
         pass
 
     def val_step(self, batch, step_idx) -> (torch.Tensor, dict):
-        warnings.warn("The default behavior of the `val_step` is the same as `train_step`")
+        warnings.warn("the default behavior of the `val_step` is the same as `train_step`")
         return self.train_step(batch, step_idx)
 
     def test_step(self, batch, step_idx) -> (torch.Tensor, dict):
-        warnings.warn("The default behavior of the `test_step` is the same as `val_step`")
+        warnings.warn("the default behavior of the `test_step` is the same as `val_step`")
         return self.val_step(batch, step_idx)

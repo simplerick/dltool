@@ -46,7 +46,7 @@ class Trainer:
     def fit(self, epochs, train_dataloader, val_dataloader=None):
         # check train dataloader
         if len(train_dataloader) > 1 and not train_dataloader.drop_last:
-            warnings.warn("The last incomplete batch in train dataloader is not dropped.")
+            warnings.warn("the last incomplete batch in train dataloader is not dropped.")
         self._step_count = 0
         # split training steps
         train_chunks = np.array_split(np.arange(epochs * len(train_dataloader)),
