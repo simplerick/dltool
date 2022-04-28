@@ -1,4 +1,7 @@
 import warnings
+from multiprocessing import Process
+from typing import Any, Union, Sequence
+
 import numpy as np
 import torch
 import json
@@ -6,7 +9,7 @@ from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
 
 
-def get_batch(dataloader):
+def get_batch(dataloader: DataLoader) -> Any:
     try:
         return next(dataloader._iterator)
     except (AttributeError, TypeError, StopIteration):
@@ -35,7 +38,7 @@ def with_transforms(cls):
 
 @with_transforms
 class SequenceDataset(Dataset):
-    def __init__(self, path, metadata=None, max_metadata_size=1024):
+    def __init__(self, path: Union[str, Path], metadata: dict = None, max_metadata_size: int = 1024):
         self.file = Path(path)
         self._attrs = metadata.copy() if isinstance(metadata, dict) else {}
         if self.file.exists():
@@ -46,19 +49,19 @@ class SequenceDataset(Dataset):
             self.length = 0
             self.size = 0
 
-    def _read_attrs(self, byte_str):
+    def _read_attrs(self, byte_str: bytes):
         sep_ix = byte_str.find(b'\n')
         self._attrs.update(json.loads(byte_str[:sep_ix]))
         for key in self._attrs:
             setattr(self, key, self._attrs[key])
         self.offset = sep_ix + 1
-        self.size = self.element_size * np.prod(self.shape)
+        self.size = int(self.element_size * np.prod(self.shape))
         self.length = (self.file.stat().st_size - self.offset) // self.size
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.length
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> torch.Tensor:
         if isinstance(index, slice):
             start = index.start if (index.start is not None) else 0
             stop = index.stop if (index.stop is not None) else self.length
@@ -79,23 +82,43 @@ class SequenceDataset(Dataset):
         t = torch.from_numpy(np.frombuffer(byte_str, dtype=self.dtype)).view((stop - start), *self.shape)
         return t
 
-    def write(self, tensors):
-        if len(tensors) > 0:
+    @staticmethod
+    def tensor_attrs(t: torch.Tensor) -> dict:
+        return {'dtype': str(t.dtype).split(".")[1],
+                'element_size': t.element_size(),
+                'shape': list(t.size())}
+
+    @staticmethod
+    def _write(file_path: Path, chunk: Sequence[torch.Tensor], offset: int):
+        # it is more efficient to concatenate first
+        if not isinstance(chunk, torch.Tensor):
+            chunk = torch.cat(chunk, 0)
+        byte_str = chunk.cpu().numpy().tobytes()
+        with open(file_path, "r+b") as f:
+            f.seek(offset)
+            f.write(byte_str)
+            f.flush()
+
+    def write(self, sequence: Sequence[torch.Tensor], processes: int = 1):
+        if len(sequence) > 0:
             metadata = self.file.exists()
-            file = open(self.file, "ab")
-            for t in tensors:
-                t_attrs = {'dtype': str(t.dtype).split(".")[1],
-                           'element_size': t.element_size(),
-                           'shape': list(t.size())}
-                if not metadata:
-                    byte_str = json.dumps({**self._attrs, **t_attrs}).encode("utf-8") + b'\n'
+            if not metadata:
+                t_attrs = self.tensor_attrs(sequence[0])
+                byte_str = json.dumps({**self._attrs, **t_attrs}).encode("utf-8") + b'\n'
+                with open(self.file, "ab") as file:
                     file.write(byte_str)
                     file.flush()
-                    self._read_attrs(byte_str)
-                    metadata = True
-                if t_attrs.items() <= self._attrs.items():
-                    file.write(t.cpu().numpy().tobytes())
-                    self.length += 1
-                else:
-                    raise ValueError("tensor shape or dtype doesn't match with template")
-            file.close()
+                self._read_attrs(byte_str)
+
+            procs = []
+            chunk_size = (len(sequence) + processes - 1) // processes
+            end_of_file = self.offset + self.length * self.size
+            for ix in range(0, len(sequence), chunk_size):
+                chunk = sequence[ix: ix + chunk_size]
+                offset = end_of_file + self.size * ix
+                p = Process(target=self._write, args=(self.file, chunk, offset))
+                procs.append(p)
+                p.start()
+            for p in procs:
+                p.join()
+            self.length += len(sequence)

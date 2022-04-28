@@ -8,6 +8,6 @@
 
 - [ ]  automate sanity check
 
-- [ ] multiprocessing writing in SequenceDataset
+- [x] multiprocessing writing in SequenceDataset
 
 - [x] logger
