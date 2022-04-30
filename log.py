@@ -1,8 +1,20 @@
 from collections import defaultdict
 import numpy as np
+from typing import Sequence
 
 
-def average(data: [], condition_on: str = None) -> dict:
+def average(data: Sequence[dict], condition_on: str = None) -> dict:
+    """
+    Computes the average value for each key. If `condition_on` is not None, returns
+    conditional expectations, assuming that each dictionary is a single sample.
+
+    Args:
+        data: sequence of dictionaries
+        condition_on: for which variable to take the conditional expectation.
+
+    Returns:
+        Dictionary with averaged values. In the case of conditional expectation, the values will be pairs of numpy arrays.
+    """
     averaged = defaultdict(list)
     if condition_on is None:
         for records in data:
@@ -22,13 +34,26 @@ def average(data: [], condition_on: str = None) -> dict:
     return averaged
 
 
+class NotLogger:
+    """
+    Dummy logger
+    """
+    def __getattribute__(self, item):
+        if item in ["log", "store", "clear", "flush", "plot"]:
+            return lambda *args, **kwargs: None
+
+
 class Logger:
     """
-    Logger, supports the wandb library.
+    Logger, supports the wandb library as backend.
     """
+    def __new__(cls, backend, *args, **kwargs):
+        if backend is None:
+            return super().__new__(NotLogger)
+        return super().__new__(cls)
 
-    def __init__(self, wandb, log_freq=1):
-        self.api = wandb
+    def __init__(self, backend, log_freq : int = 1):
+        self.api = backend
         self.log_freq = log_freq
         self._log_step = 0  # data will be written with this step value
         self._step = 0  # last step

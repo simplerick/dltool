@@ -15,7 +15,6 @@ class Trainer:
         self.val_check_interval = val_check_interval
         self.device = next(self.model.parameters(), torch.empty(0)).device
         self.logger = Logger(logger, log_interval)
-        self.logger.api.define_metric("Epoch", hidden=True)
         self._step_count = 0
         self.best_model_state = None
         self.val_hooks = []
@@ -74,7 +73,7 @@ class Trainer:
         with evaluating(self.model):
             self.loop(len(test_dataloader), test_dataloader, self.algorithm.test_step)
 
-    def set_opt_goal(self, metric, select_fn=min):
+    def set_model_checkpointer(self, metric, select_fn=min):
         def save_model_checkpoints(obj):
             if len(obj.logger.history[metric]) > 0 and select_fn(self.logger.history[metric]) == self.logger.history[metric][-1]:
                 obj.fix_best_state()
