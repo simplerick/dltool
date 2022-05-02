@@ -95,4 +95,4 @@ class Logger:
         y_key = f"{group}/{y_key}" if group is not None else y_key
         table = self.api.Table(data=data, columns=[x_key, y_key])
         self.api.log({f"{y_key}:{x_key}": self.api.plot.line(table, x_key, y_key,
-                                                             stroke=stroke, title=title)})
+                                                             stroke=stroke, title=title)}, self._log_step)

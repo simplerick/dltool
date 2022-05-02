@@ -45,7 +45,7 @@ class SequenceDataset(Dataset):
             with open(path, "rb") as f:
                 self._read_attrs(f.read(max_metadata_size))
         else:
-            warnings.warn("path does not exist, it will be interpreted as the desired storage location.")
+            warnings.warn(f"path '{path}' does not exist, it will be interpreted as the desired storage location.")
             self.length = 0
             self.size = 0
 
