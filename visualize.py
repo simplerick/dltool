@@ -5,8 +5,8 @@ import torch
 from typing import Union, Sequence
 
 
-def scale(t: torch.Tensor, min_value: float = 0,
-          max_value: float = 1, dim: Union[int, Sequence[int]] = None) -> torch.Tensor:
+def scale(t: torch.Tensor, min_value: float = 0, max_value: float = 1,
+          dim: Union[int, Sequence[int]] = None, q: float = None) -> torch.Tensor:
     """
     Scales the tensor values so that they lie between specified boundary values.
 
@@ -14,14 +14,27 @@ def scale(t: torch.Tensor, min_value: float = 0,
         t: initial tensor
         min_value: desired minimum value of the resulting tensor
         max_value: desired maximum value of the resulting tensor
-        dim: dimensions that will be reduced when calculating the minimum and maximum, i.e. tensor will be scaled
-         independently along the other dimensions; if None, the same transformation is applied to all tensor elements
+        dim: dimensions to reduce when calculating the minimum and maximum,
+            i.e. slices along the other dimensions will be viewed independently;
+            if None, the same transformation is applied to all tensor elements
+        q: lower quantile, if given, the data between the q-th and (1-q)-th quantiles
+            will be normalized. Values outside will be clipped.
 
     Returns:
         Scaled tensor
     """
-    if dim is None:
-        dim = tuple(range(t.dim()))
+    if q is not None:
+        if dim is None:
+            dim = tuple(range(t.dim()))
+        if isinstance(dim, int):
+            dim = (dim,)
+        left_positions = tuple(range(len(dim)))
+        t = t.movedim(dim, left_positions)
+        t_shape = t.size()
+        t = t.flatten(end_dim=len(dim)-1)
+        lower_q, upper_q = torch.quantile(t, q=torch.tensor([q, 1-q], device=t.device), dim=0, keepdim=True)
+        t = t.clamp(min=lower_q, max=upper_q)
+        t = t.reshape(t_shape).movedim(left_positions, dim)
     t_min, t_max = t.amin(dim=dim, keepdim=True), t.amax(dim=dim, keepdim=True)
     t = (t - t_min) * (max_value - min_value) / (t_max - t_min + 1e-5) + min_value
     return t
@@ -53,7 +66,7 @@ def put_caption(img: np.ndarray, text: str):
 
 
 def make_grid(t: torch.Tensor, normalize: bool = False, ncols: int = 8, captions: Sequence[str] = None, pad: int = 1,
-              channel_dim: int = 1) -> np.ndarray:
+              channel_dim: int = 1, quantile: float = None) -> np.ndarray:
     """
     Makes grid from batch of images with default shape (n, channels, height, width).
     Indicate the channel dim if its order is different.
@@ -65,13 +78,15 @@ def make_grid(t: torch.Tensor, normalize: bool = False, ncols: int = 8, captions
         captions: tuple of captions for each image in the initial tensor
         pad: padding size, the images in the grid will be placed twice as far apart from each other
         channel_dim: channel dim location
+        quantile: lower quantile, if given and normalization is enabled, the data values
+            will be clipped to fall in the interval between the q-th and (1-q)-th quantiles
 
     Returns:
         Image array
     """
     array = t.detach().movedim(channel_dim, -1)
     if normalize is True:
-        array = scale(array, dim=tuple(range(array.dim() - 1)))
+        array = scale(array, dim=tuple(range(array.dim() - 1)), q=quantile)
     # add padding
     padding = [(0, 0), (pad, pad), (pad, pad), (0, 0)]
     array = np.pad(array.cpu().numpy(), padding, 'constant')
