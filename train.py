@@ -1,20 +1,21 @@
 import warnings
 import torch
+import numpy as np
+
 from dltool.data import get_batch
 from dltool.log import Logger
 from dltool.utils import to, detach, evaluating, cpu_state_dict
-import numpy as np
 
 
 class Trainer:
-    def __init__(self, algorithm, optimizer, scheduler, logger, val_check_interval=1.0, log_interval=10):
+    def __init__(self, algorithm, optimizer=None, scheduler=None, logger=None, val_check_interval=1.0, log_interval=10):
         self.algorithm = algorithm
         self.model = algorithm.model
         self.optimizer = optimizer
         self.scheduler = scheduler
+        self.logger = Logger(logger, log_interval)
         self.val_check_interval = val_check_interval
         self.device = next(self.model.parameters(), torch.empty(0)).device
-        self.logger = Logger(logger, log_interval)
         self._step_count = 0
         self.best_model_state = None
         self.val_hooks = []
@@ -26,18 +27,22 @@ class Trainer:
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
-        scheduler.step()
+        if self.scheduler is not None:
+            scheduler.step()
 
-    def loop(self, num_steps, dataloader, step_fn, optimize=False):
+    def loop(self, num_steps, dataloader, step_fn):
         for batch_idx in range(num_steps):
             batch = to(get_batch(dataloader), device=self.device)
             loss, metrics = step_fn(batch, self._step_count)
+            # opt step
+            if loss is not None and loss.requires_grad:
+                self.opt_step(loss, self.optimizer, self.scheduler)
+            # log metrics
             metrics = detach(metrics)  # detach tensors if they are attached to graph
             metrics = to(metrics, device='cpu')
             fn_name = step_fn.__name__
             self.logger.log(metrics, self._step_count, group=fn_name)
-            if optimize:
-                self.opt_step(loss, self.optimizer, self.scheduler)
+            if fn_name == 'train_step':
                 self._step_count += 1
                 self.logger.log({"Epoch": self._step_count / len(dataloader)}, self._step_count)
                 self.logger.log({"lr": self.scheduler.get_last_lr()[0]}, self._step_count, group="hparams")
@@ -51,7 +56,7 @@ class Trainer:
         train_chunks = np.array_split(np.arange(epochs * len(train_dataloader)),
                                       max(1, int(epochs / self.val_check_interval)))
         for chunk in train_chunks:
-            self.loop(len(chunk), train_dataloader, self.algorithm.train_step, optimize=True)
+            self.loop(len(chunk), train_dataloader, self.algorithm.train_step)
             if val_dataloader is not None:
                 print("Start validation", self._step_count)
                 with evaluating(self.model):
@@ -72,6 +77,7 @@ class Trainer:
         # testing loop
         with evaluating(self.model):
             self.loop(len(test_dataloader), test_dataloader, self.algorithm.test_step)
+        self.logger.flush()
 
     def set_model_checkpointer(self, metric, select_fn=min):
         def save_model_checkpoints(obj):

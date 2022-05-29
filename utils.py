@@ -1,5 +1,15 @@
+from typing import Callable
 import torch
 from contextlib import contextmanager
+
+
+class FuncModule(torch.nn.Module):
+    def __init__(self, func: Callable):
+        super().__init__()
+        self.forward = func
+
+    def __repr__(self):
+        return f"FuncModule({self.forward.__name__})"
 
 
 def apply(obj: object, func_str: str, **args) -> object:
