@@ -10,7 +10,7 @@ from dltool.utils import to, detach, evaluating, cpu_state_dict
 class Trainer:
     def __init__(self, algorithm, optimizer=None, scheduler=None, logger=None, val_check_interval=1.0, log_interval=10):
         self.algorithm = algorithm
-        self.model = algorithm.model
+        self.model = algorithm.model if algorithm.model else torch.nn.Module()
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.logger = Logger(logger, log_interval)
