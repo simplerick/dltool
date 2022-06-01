@@ -11,10 +11,10 @@ from pathlib import Path
 
 def get_batch(dataloader: DataLoader) -> Any:
     try:
-        return next(dataloader._iterator)
+        return next(dataloader._batch_iter)
     except (AttributeError, TypeError, StopIteration):
-        dataloader._iterator = dataloader.__iter__()
-        return next(dataloader._iterator)
+        dataloader._batch_iter = dataloader.__iter__()
+        return next(dataloader._batch_iter)
 
 
 def with_transforms(cls):
