@@ -1,9 +1,9 @@
 from collections import defaultdict
 import numpy as np
-from typing import Sequence
+from typing import Sequence, Mapping
 
 
-def average(data: Sequence[dict], condition_on: str = None) -> dict:
+def average(data: Sequence[Mapping], condition_on: str = None) -> dict:
     """
     Computes the average value for each key. If `condition_on` is not None, returns
     conditional expectations, assuming that each dictionary is a single sample.
@@ -52,7 +52,7 @@ class Logger:
             return super().__new__(NotLogger)
         return super().__new__(cls)
 
-    def __init__(self, backend, log_freq : int = 1):
+    def __init__(self, backend, log_freq: int = 1):
         self.api = backend
         self.log_freq = log_freq
         self._log_step = 0  # data will be written with this step value
@@ -60,7 +60,7 @@ class Logger:
         self._data_storage: dict = defaultdict(list)  # {group : [{metric_name: value}, {metric_name: value}]}
         self.history = defaultdict(list)
 
-    def log(self, metrics, step: int, group: str = None):
+    def log(self, metrics, step: int, group: str = None, flush: bool = False):
         self._step = step
         ix = step % self.log_freq
         if step < self._log_step:
@@ -69,6 +69,8 @@ class Logger:
             self.flush()
             self._log_step = step - ix
         self.store(metrics, group)
+        if flush:
+            self.flush()
 
     def store(self, metrics, group: str = None):
         if isinstance(metrics, dict):

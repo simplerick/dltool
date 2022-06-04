@@ -41,7 +41,8 @@ class Trainer:
             metrics = detach(metrics)  # detach tensors if they are attached to graph
             metrics = to(metrics, device='cpu')
             fn_name = step_fn.__name__
-            self.logger.log(metrics, self._step_count, group=fn_name)
+            self.logger.log(metrics, self._step_count, group=fn_name,
+                            flush=(batch_idx == num_steps-1 and fn_name != 'train_step'))
             if fn_name == 'train_step':
                 self._step_count += 1
                 self.logger.log({"Epoch": self._step_count / len(dataloader)}, self._step_count)
@@ -61,7 +62,6 @@ class Trainer:
                 print("Start validation", self._step_count)
                 with evaluating(self.model):
                     self.loop(len(val_dataloader), val_dataloader, self.algorithm.val_step)
-                self.logger.flush()
             # hooks
             try:
                 for fn in self.val_hooks:
@@ -77,7 +77,6 @@ class Trainer:
         # testing loop
         with evaluating(self.model):
             self.loop(len(test_dataloader), test_dataloader, self.algorithm.test_step)
-        self.logger.flush()
 
     def set_model_checkpointer(self, metric, select_fn=min):
         def save_model_checkpoints(obj):
