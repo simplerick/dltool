@@ -1,15 +1,15 @@
 from abc import ABC, abstractmethod
-from typing import Union, Sequence
 import torch
 import warnings
 import re
 
 
-class Algorithm(ABC):
+class Algorithm(ABC, torch.nn.Module):
     """
     Inherit this class to define custom dl algorithm.
     """
     def __init__(self, model, **kwargs):
+        super().__init__()
         self.model = model
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -24,10 +24,6 @@ class Algorithm(ABC):
     #                 training_parameters.append(n)
     #                 m.requires_grad_(True)
     #     return training_parameters
-
-    def get_optimizers(self) -> Union[torch.optim.Optimizer, Sequence[torch.optim.Optimizer]]:
-        warnings.warn("`get_optimizers` is not implemented")
-        pass
 
     @abstractmethod
     def train_step(self, batch, step_idx: int) -> (torch.Tensor, dict):

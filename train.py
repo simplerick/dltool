@@ -60,7 +60,7 @@ class Trainer:
             self.loop(len(chunk), train_dataloader, self.algorithm.train_step)
             if val_dataloader is not None:
                 print("Start validation", self._step_count)
-                with evaluating(self.model):
+                with evaluating(self.algorithm):
                     self.loop(len(val_dataloader), val_dataloader, self.algorithm.val_step)
             # hooks
             try:
@@ -75,7 +75,7 @@ class Trainer:
 
     def test(self, test_dataloader):
         # testing loop
-        with evaluating(self.model):
+        with evaluating(self.algorithm):
             self.loop(len(test_dataloader), test_dataloader, self.algorithm.test_step)
 
     def set_model_checkpointer(self, metric, select_fn=min):
