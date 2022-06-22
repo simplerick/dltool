@@ -10,18 +10,17 @@ from dltool.utils import to, detach, evaluating, cpu_state_dict
 class Trainer:
     def __init__(self, algorithm, optimizer=None, scheduler=None, logger=None, val_check_interval=1.0, log_interval=10):
         self.algorithm = algorithm
-        self.model = algorithm.model if algorithm.model else torch.nn.Module()
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.logger = Logger(logger, log_interval)
         self.val_check_interval = val_check_interval
-        self.device = next(self.model.parameters(), torch.empty(0)).device
+        self.device = next(self.algorithm.parameters(), torch.empty(0)).device
         self._step_count = 0
         self.best_model_state = None
         self.val_hooks = []
 
     def fix_best_state(self):
-        self.best_model_state = cpu_state_dict(self.model)
+        self.best_model_state = cpu_state_dict(self.algorithm)
 
     def opt_step(self, loss, optimizer, scheduler):
         loss.backward()
@@ -29,6 +28,7 @@ class Trainer:
         optimizer.zero_grad()
         if self.scheduler is not None:
             scheduler.step()
+            self.logger.log({"lr": self.scheduler.get_last_lr()[0]}, self._step_count, group="hparams")
 
     def loop(self, num_steps, dataloader, step_fn):
         for batch_idx in range(num_steps):
@@ -46,7 +46,6 @@ class Trainer:
             if fn_name == 'train_step':
                 self._step_count += 1
                 self.logger.log({"Epoch": self._step_count / len(dataloader)}, self._step_count)
-                self.logger.log({"lr": self.scheduler.get_last_lr()[0]}, self._step_count, group="hparams")
 
     def fit(self, epochs, train_dataloader, val_dataloader=None):
         # check train dataloader
@@ -71,7 +70,7 @@ class Trainer:
                 break
         # load best model if any is saved
         if self.best_model_state is not None:
-            self.model.load_state_dict(self.best_model_state)
+            self.algorithm.load_state_dict(self.best_model_state)
 
     def test(self, test_dataloader):
         # testing loop

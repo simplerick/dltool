@@ -8,9 +8,8 @@ class Algorithm(ABC, torch.nn.Module):
     """
     Inherit this class to define custom dl algorithm.
     """
-    def __init__(self, model, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__()
-        self.model = model
         for k, v in kwargs.items():
             setattr(self, k, v)
 
