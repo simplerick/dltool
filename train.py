@@ -56,6 +56,8 @@ class Trainer:
         train_chunks = np.array_split(np.arange(epochs * len(train_dataloader)),
                                       max(1, int(epochs / self.val_check_interval)))
         for chunk in train_chunks:
+            if len(chunk) == 0:
+                continue
             self.loop(len(chunk), train_dataloader, self.algorithm.train_step)
             if val_dataloader is not None:
                 print("Start validation", self._step_count)
