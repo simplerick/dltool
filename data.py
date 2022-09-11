@@ -39,16 +39,19 @@ def with_transforms(cls):
 
 @with_transforms
 class SequenceDataset(Dataset):
+    _required_attrs = {'dtype', 'dtype_size', 'shape'}
+
     def __init__(self, path: Union[str, Path], metadata: dict = None, max_metadata_size: int = 1024):
         self._file = Path(path)
         self._attrs = metadata.copy() if isinstance(metadata, dict) else {}
+        self._element_size = 0
+        self._length = 0
+        self._offset = 0
         if self._file.exists():
             with open(path, "rb") as f:
                 self._read_attrs(f.read(max_metadata_size))
         else:
             warnings.warn(f"a new file will be created at '{path}'")
-            self._length = 0
-            self._element_size = 0
 
     @property
     def file(self):
@@ -59,17 +62,23 @@ class SequenceDataset(Dataset):
         return deepcopy(self._attrs)
 
     def _read_attrs(self, byte_str: bytes):
-        sep_ix = byte_str.find(b'\n')
-        self._attrs.update(json.loads(byte_str[:sep_ix]))
-        for key in self._attrs:
-            setattr(self, f"_{key}", self._attrs[key])
-        self._offset = sep_ix + 1
-        self._element_size = int(self._dtype_size * np.prod(self._shape))
-        self._length = (self._file.stat().st_size - self._offset) // self._element_size
+        try:
+            sep_ix = byte_str.find(b'\n')
+            self._attrs.update(json.loads(byte_str[:sep_ix]))
+            if not self._attrs.keys() >= SequenceDataset._required_attrs:
+                raise KeyError
+            for key in self._attrs:
+                setattr(self, f"_{key}", self._attrs[key])
+            self._element_size = int(self._dtype_size * np.prod(self._shape))
+            self._length = (self._file.stat().st_size - sep_ix - 1) // self._element_size
+            self._offset = sep_ix + 1
+        except:
+            warnings.warn(f"reading metadata for {self.file} has failed. "
+                          f"If writing is attempted, the file will be overwritten.")
 
     def _write_metadata(self, metadata: dict):
         byte_str = json.dumps(metadata).encode("utf-8") + b'\n'
-        with open(self._file, "ab") as file:
+        with open(self._file, "wb") as file:
             file.write(byte_str)
             file.flush()
         self._read_attrs(byte_str)
@@ -92,6 +101,8 @@ class SequenceDataset(Dataset):
             if start < 0 or start >= self._length:
                 raise IndexError("index out of range")
             stop = index + 1
+        if stop == start:
+            return torch.empty(0, *getattr(self, "_shape", []))
         with open(self._file, "rb") as f:
             f.seek(self._offset + self._element_size * start)
             byte_str = f.read((stop - start) * self._element_size)
@@ -120,8 +131,8 @@ class SequenceDataset(Dataset):
             index = index if (index is not None) else self._length
             if index > self._length:
                 raise IndexError("index out of range")
-            metadata_exists = self._file.exists()
-            if not metadata_exists:
+            # _offset indicates if metadata stored and correct
+            if self._offset == 0:
                 t_attrs = self._tensor_attrs(sequence[0])
                 self._write_metadata({**self._attrs, **t_attrs})
             procs = []
