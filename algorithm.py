@@ -13,16 +13,25 @@ class Algorithm(ABC, torch.nn.Module):
         for k, v in kwargs.items():
             setattr(self, k, v)
 
-    # def set_training_parts(self, parameters: [str]) -> list:
-    #     self.model.requires_grad_(False)
-    #     training_parameters = []
-    #     for p_template in parameters:
-    #         pattern = re.compile(f"{p_template}\.|{p_template}$")
-    #         for n, m in self.model.named_parameters():
-    #             if re.match(pattern, n):
-    #                 training_parameters.append(n)
-    #                 m.requires_grad_(True)
-    #     return training_parameters
+    def set_trainable_modules(self, names: [str]) -> list:
+        self.requires_grad_(False)
+        self.eval()
+        training_modules = []
+        p_templates = [re.compile(f"{n}\.|{n}$") for n in names]
+
+        def traverse(name, mod):
+            for pattern in p_templates:
+                if re.match(pattern, name):
+                    training_modules.append(name)
+                    mod.requires_grad_(True)
+                    mod.train()
+                    return
+            for n, m in mod.named_children():
+                traverse(f"{name}.{n}", m)
+
+        for n, m in self.named_children():
+            traverse(n, m)
+        return training_modules
 
     @abstractmethod
     def train_step(self, batch, step_idx: int) -> (torch.Tensor, dict):

@@ -15,7 +15,7 @@ class FuncModule(torch.nn.Module):
 def apply(obj: object, func_str: str, **args) -> object:
     """
     Applies the specified method to the object;
-    if there is no such method, it recursively bypasses the object and tries to apply the method to its child objects.
+    if there is no such method, it recursively traverses the object and tries to apply the method to its child objects.
 
     Args:
         obj: object
