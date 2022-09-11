@@ -1,6 +1,7 @@
 import warnings
 from multiprocessing import Process
 from typing import Any, Union, Sequence
+from copy import copy, deepcopy
 
 import numpy as np
 import torch
@@ -39,53 +40,68 @@ def with_transforms(cls):
 @with_transforms
 class SequenceDataset(Dataset):
     def __init__(self, path: Union[str, Path], metadata: dict = None, max_metadata_size: int = 1024):
-        self.file = Path(path)
+        self._file = Path(path)
         self._attrs = metadata.copy() if isinstance(metadata, dict) else {}
-        if self.file.exists():
+        if self._file.exists():
             with open(path, "rb") as f:
                 self._read_attrs(f.read(max_metadata_size))
         else:
-            warnings.warn(f"path '{path}' does not exist, it will be interpreted as the desired storage location.")
-            self.length = 0
-            self.size = 0
+            warnings.warn(f"a new file will be created at '{path}'")
+            self._length = 0
+            self._element_size = 0
+
+    @property
+    def file(self):
+        return str(self._file)
+
+    @property
+    def metadata(self):
+        return deepcopy(self._attrs)
 
     def _read_attrs(self, byte_str: bytes):
         sep_ix = byte_str.find(b'\n')
         self._attrs.update(json.loads(byte_str[:sep_ix]))
         for key in self._attrs:
-            setattr(self, key, self._attrs[key])
-        self.offset = sep_ix + 1
-        self.size = int(self.element_size * np.prod(self.shape))
-        self.length = (self.file.stat().st_size - self.offset) // self.size
+            setattr(self, f"_{key}", self._attrs[key])
+        self._offset = sep_ix + 1
+        self._element_size = int(self._dtype_size * np.prod(self._shape))
+        self._length = (self._file.stat().st_size - self._offset) // self._element_size
+
+    def _write_metadata(self, metadata: dict):
+        byte_str = json.dumps(metadata).encode("utf-8") + b'\n'
+        with open(self._file, "ab") as file:
+            file.write(byte_str)
+            file.flush()
+        self._read_attrs(byte_str)
 
     def __len__(self) -> int:
-        return self.length
+        return self._length
 
     def __getitem__(self, index: int) -> torch.Tensor:
         if isinstance(index, slice):
             start = index.start if (index.start is not None) else 0
-            stop = index.stop if (index.stop is not None) else self.length
-            start += (start < 0) * self.length
-            stop += (stop < 0) * self.length
-            start = min(self.length, max(0, start))
-            stop = min(self.length, max(start, stop))
+            stop = index.stop if (index.stop is not None) else self._length
+            start += (start < 0) * self._length
+            stop += (stop < 0) * self._length
+            start = min(self._length, max(0, start))
+            stop = min(self._length, max(start, stop))
             if index.step:
                 raise NotImplementedError("step in slice is not implemented")
         else:
-            start = index + (index < 0) * self.length
-            if start < 0 or start >= self.length:
+            start = index + (index < 0) * self._length
+            if start < 0 or start >= self._length:
                 raise IndexError("index out of range")
             stop = index + 1
-        with open(self.file, "rb") as f:
-            f.seek(self.offset + self.size * start)
-            byte_str = f.read((stop - start) * self.size)
-        t = torch.from_numpy(np.frombuffer(byte_str, dtype=self.dtype)).view((stop - start), *self.shape)
+        with open(self._file, "rb") as f:
+            f.seek(self._offset + self._element_size * start)
+            byte_str = f.read((stop - start) * self._element_size)
+        t = torch.from_numpy(np.frombuffer(byte_str, dtype=self._dtype)).view((stop - start), *self._shape)
         return t
 
     @staticmethod
-    def tensor_attrs(t: torch.Tensor) -> dict:
+    def _tensor_attrs(t: torch.Tensor) -> dict:
         return {'dtype': str(t.dtype).split(".")[1],
-                'element_size': t.element_size(),
+                'dtype_size': t.element_size(),
                 'shape': list(t.size())}
 
     @staticmethod
@@ -99,26 +115,24 @@ class SequenceDataset(Dataset):
             f.write(byte_str)
             f.flush()
 
-    def write(self, sequence: Sequence[torch.Tensor], processes: int = 1):
+    def write(self, sequence: Sequence[torch.Tensor], index: int = None, processes: int = 1):
         if len(sequence) > 0:
-            metadata = self.file.exists()
-            if not metadata:
-                t_attrs = self.tensor_attrs(sequence[0])
-                byte_str = json.dumps({**self._attrs, **t_attrs}).encode("utf-8") + b'\n'
-                with open(self.file, "ab") as file:
-                    file.write(byte_str)
-                    file.flush()
-                self._read_attrs(byte_str)
-
+            index = index if (index is not None) else self._length
+            if index > self._length:
+                raise IndexError("index out of range")
+            metadata_exists = self._file.exists()
+            if not metadata_exists:
+                t_attrs = self._tensor_attrs(sequence[0])
+                self._write_metadata({**self._attrs, **t_attrs})
             procs = []
             chunk_size = (len(sequence) + processes - 1) // processes
-            end_of_file = self.offset + self.length * self.size
+            pos = self._offset + index * self._element_size
             for ix in range(0, len(sequence), chunk_size):
                 chunk = sequence[ix: ix + chunk_size]
-                offset = end_of_file + self.size * ix
-                p = Process(target=self._write, args=(self.file, chunk, offset))
+                offset = pos + self._element_size * ix
+                p = Process(target=self._write, args=(self._file, chunk, offset))
                 procs.append(p)
                 p.start()
             for p in procs:
                 p.join()
-            self.length += len(sequence)
+            self._length = max(self._length, index + len(sequence))
