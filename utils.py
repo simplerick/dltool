@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Union, List
 import torch
 from contextlib import contextmanager
 
@@ -76,6 +76,41 @@ def cpu_state_dict(model: torch.nn.Module) -> dict:
         Dictionary containing a whole state of the module.
     """
     return to(model.state_dict(), device='cpu')
+
+
+def cartesian_prod(*tensors: Union[torch.Tensor, List[torch.Tensor]]) -> torch.Tensor:
+    """
+    Cartesian product of tensors. The same as torch.cartesian_prod but works with 0D, 1D and 2D tensors and returns 2D tensor.
+    If tensor is 2D, its rows are considered as one-piece elements of product, i.e. concated to the rows of the result cartesian product.
+
+    Example:
+        a = torch.tensor([[1, 2], [3, 4]])
+        b = torch.tensor([[5, 6], [7, 8]])
+        cartesian_prod(a, b) = torch.tensor([[1, 2, 5, 6], [1, 2, 7, 8], [3, 4, 5, 6], [3, 4, 7, 8]])
+
+    Args:
+        tensors: list of 0D, 1D or 2D tensors
+
+    Returns:
+        2D tensor with cartesian product of tensors
+    """
+    # check that all tensors are 0D, 1D or 2D
+    assert all([t.dim() <= 2 for t in tensors])
+    # reshape all tensors to 2D
+    tensors = [t.view(t.numel(), 1) if t.dim() != 2 else t for t in tensors]
+    # determine the shape of grids
+    shape = [t.shape[0] for t in tensors]
+    view_shape = [1] * len(shape)
+    # create grids
+    grids = []
+    for i,t in enumerate(tensors):
+        view_shape[i] = -1
+        grid = t.view(*view_shape, t.shape[-1]).expand(*shape, t.shape[-1])
+        view_shape[i] = 1
+        grids.append(grid)
+    prod = torch.cat(grids, dim=-1)
+    prod = prod.view(-1, prod.shape[-1])
+    return prod
 
 
 # context manager for evaluating
