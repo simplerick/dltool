@@ -1,6 +1,6 @@
 import warnings
 from multiprocessing import Process
-from typing import Any, Union, Sequence
+from typing import Any, Union, Sequence, Callable
 from copy import copy, deepcopy
 
 import numpy as np
@@ -10,36 +10,55 @@ from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
 
 
-def get_batch(dataloader: DataLoader) -> Any:
-    try:
-        return next(dataloader._batch_iter)
-    except (AttributeError, TypeError, StopIteration):
-        dataloader._batch_iter = dataloader.__iter__()
-        return next(dataloader._batch_iter)
+class DataIterator():
+    def __init__(self, dataloader):
+        self.dataloader = dataloader
+        self._iter = iter(self.dataloader)
+
+    def __len__(self):
+        return len(self.dataloader)
+
+    def __next__(self):
+        try:
+            return next(self._iter)
+        except (AttributeError, TypeError, StopIteration):
+            self._iter = iter(self.dataloader)
+            return next(self._iter)
 
 
-def with_transforms(cls):
-    def _with_transforms(self, transforms):
+def transformable(cls):
+    """
+    Modify the class to be able to transform the data
+
+    Args:
+        cls: initial class
+
+    Returns:
+        modified class
+    """
+
+    def _with_transforms(self, transforms: Sequence[Callable]):
         self.transforms = transforms
         return self
 
+    cls.with_transforms = _with_transforms
+    cls._getitem = cls.__getitem__
+
     def _getitem(self, *args, **kwargs):
-        x = cls.__getitem__(self, *args, **kwargs)
-        for t in self.transforms:
+        x = cls._getitem(self, *args, **kwargs)
+        trfm = getattr(self, "transforms", [])
+        for t in trfm:
             x = t(x)
         return x
 
-    class DatasetWithTransforms(cls):
-        transforms = []
-        with_transforms = _with_transforms
-        __getitem__ = _getitem
-
-    return DatasetWithTransforms
+    cls.__getitem__ = _getitem
+    return cls
 
 
-@with_transforms
+@transformable
 class SequenceDataset(Dataset):
     _required_attrs = {'dtype', 'dtype_size', 'shape'}
+    __slots__ = ["_file", "_attrs", "_element_size", "_length", "_offset"] + [f"_{a}" for a in _required_attrs]
 
     def __init__(self, path: Union[str, Path], metadata: dict = None, max_metadata_size: int = 1024):
         self._file = Path(path)

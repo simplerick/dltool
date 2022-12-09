@@ -2,7 +2,7 @@ import warnings
 import torch
 import numpy as np
 
-from dltool.data import get_batch
+from dltool.data import DataIterator
 from dltool.log import Logger
 from dltool.utils import to, detach, evaluating, cpu_state_dict
 
@@ -32,7 +32,7 @@ class Trainer:
 
     def loop(self, num_steps, dataloader, step_fn):
         for batch_idx in range(num_steps):
-            batch = to(get_batch(dataloader), device=self.device)
+            batch = to(next(dataloader), device=self.device)
             loss, metrics = step_fn(batch, self._step_count)
             # opt step
             if loss is not None and loss.requires_grad:
@@ -48,6 +48,9 @@ class Trainer:
                 self.logger.log({"Epoch": self._step_count / len(dataloader)}, self._step_count)
 
     def fit(self, epochs, train_dataloader, val_dataloader=None):
+        # data iterators
+        train_iterator = DataIterator(train_dataloader)
+        val_iterator = DataIterator(val_dataloader) if val_dataloader is not None else None
         # check train dataloader
         if len(train_dataloader) > 1 and not train_dataloader.drop_last:
             warnings.warn("the last incomplete batch in train dataloader is not dropped.")
@@ -58,11 +61,11 @@ class Trainer:
         for chunk in train_chunks:
             if len(chunk) == 0:
                 continue
-            self.loop(len(chunk), train_dataloader, self.algorithm.train_step)
+            self.loop(len(chunk), train_iterator, self.algorithm.train_step)
             if val_dataloader is not None:
                 print("Start validation", self._step_count)
                 with evaluating(self.algorithm):
-                    self.loop(len(val_dataloader), val_dataloader, self.algorithm.val_step)
+                    self.loop(len(val_dataloader), val_iterator, self.algorithm.val_step)
             # hooks
             try:
                 for fn in self.val_hooks:
@@ -75,9 +78,11 @@ class Trainer:
             self.algorithm.load_state_dict(self.best_model_state)
 
     def test(self, test_dataloader):
+        # data iterator
+        test_iterator = DataIterator(test_dataloader)
         # testing loop
         with evaluating(self.algorithm):
-            self.loop(len(test_dataloader), test_dataloader, self.algorithm.test_step)
+            self.loop(len(test_dataloader), test_iterator, self.algorithm.test_step)
 
     def set_model_checkpointer(self, metric, select_fn=min):
         def save_model_checkpoints(obj):
