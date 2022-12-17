@@ -10,7 +10,7 @@ from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
 
 
-class DataIterator():
+class DataIterator:
     def __init__(self, dataloader):
         self.dataloader = dataloader
         self._iter = iter(self.dataloader)
