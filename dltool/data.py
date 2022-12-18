@@ -60,17 +60,28 @@ class SequenceDataset(Dataset):
     _required_attrs = {'dtype', 'dtype_size', 'shape'}
     __slots__ = ["_file", "_attrs", "_element_size", "_length", "_offset"] + [f"_{a}" for a in _required_attrs]
 
-    def __init__(self, path: Union[str, Path], metadata: dict = None, max_metadata_size: int = 1024):
+    def __init__(self,
+                 path: Union[str, Path],
+                 metadata: dict = None,
+                 overwrite: bool = False,
+                 max_metadata_size: int = 1024):
         self._file = Path(path)
         self._attrs = metadata.copy() if isinstance(metadata, dict) else {}
         self._element_size = 0
         self._length = 0
         self._offset = 0
-        if self._file.exists():
-            with open(path, "rb") as f:
-                self._read_attrs(f.read(max_metadata_size))
+        if metadata is None:
+            if self._file.exists():
+                with open(path, "rb") as f:
+                    self._read_attrs(f.read(max_metadata_size))
+            else:
+                raise RuntimeError(f"File {path} does not exist.")
         else:
-            warnings.warn(f"a new file will be created at '{path}'")
+            if self._file.exists():
+                if overwrite:
+                    warnings.warn(f"File {path} already exists and will be overwritten")
+                else:
+                    raise RuntimeError(f"File {path} already exists. Use overwrite=True to overwrite it")
 
     @property
     def file(self):
@@ -96,6 +107,8 @@ class SequenceDataset(Dataset):
                           f"If writing is attempted, the file will be overwritten.")
 
     def _write_metadata(self, metadata: dict):
+        if self._file.exists():
+            self._file.unlink()
         byte_str = json.dumps(metadata).encode("utf-8") + b'\n'
         with open(self._file, "wb") as file:
             file.write(byte_str)
@@ -147,13 +160,12 @@ class SequenceDataset(Dataset):
 
     def write(self, sequence: Sequence[torch.Tensor], index: int = None, processes: int = 1):
         if len(sequence) > 0:
-            index = index if (index is not None) else self._length
-            if index > self._length:
-                raise IndexError("index out of range")
-            # _offset indicates if metadata stored and correct
             if self._offset == 0:
                 t_attrs = self._tensor_attrs(sequence[0])
                 self._write_metadata({**self._attrs, **t_attrs})
+            index = index if (index is not None) else self._length
+            if index > self._length:
+                raise IndexError("index out of range")
             procs = []
             chunk_size = (len(sequence) + processes - 1) // processes
             pos = self._offset + index * self._element_size
