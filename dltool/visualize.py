@@ -1,6 +1,4 @@
-import cv2
 import numpy as np
-import numbers
 import torch
 from typing import Union, Sequence
 
