@@ -26,9 +26,9 @@ class DataIterator:
             return next(self._iter)
 
 
-def transformable(cls):
+def transformable(cls: type):
     """
-    Modify the class to be able to transform the data
+    Modify the class to be able to transform the data. Warning: it modifies the class in place.
 
     Args:
         cls: initial class
@@ -36,6 +36,8 @@ def transformable(cls):
     Returns:
         modified class
     """
+    if hasattr(cls, "_getitem"):
+        raise ValueError("The class already has `_getitem` method. Check if it is already transformable.")
 
     def _with_transforms(self, transforms: Sequence[Callable]):
         self.transforms = transforms
