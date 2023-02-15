@@ -14,6 +14,16 @@ class Algorithm(ABC, torch.nn.Module):
             setattr(self, k, v)
 
     def set_trainable_modules(self, names: [str]) -> list:
+        """
+        Enable gradients for the modules, whose names match one of the given patterns, and disable gradients for the rest.
+        Applies recursively to all children of the matched modules.
+
+        Args:
+            names: list of patterns to match module names
+
+        Returns:
+            names of the modules, whose gradients were enabled
+        """
         self.requires_grad_(False)
         self.eval()
         training_modules = []
