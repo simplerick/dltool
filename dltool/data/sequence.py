@@ -1,80 +1,27 @@
+import json
 import warnings
+from copy import deepcopy
 from io import DEFAULT_BUFFER_SIZE
 from multiprocessing import Process
-from typing import Any, Union, Sequence, Callable
-from copy import copy, deepcopy
-
+from pathlib import Path
+from typing import Union, Sequence
 import numpy as np
 import torch
-import json
-from torch.utils.data import Dataset, DataLoader
-from pathlib import Path
+from torch.utils.data import Dataset
+from .utils import transformable
 
+from torch.testing._internal.common_dtype import get_all_dtypes
 
-class DataIterator:
-    def __init__(self, dataloader):
-        self.dataloader = dataloader
-        self._iter = iter(self.dataloader)
-
-    def __len__(self):
-        return len(self.dataloader)
-
-    def __next__(self):
-        try:
-            return next(self._iter)
-        except (AttributeError, TypeError, StopIteration):
-            self._iter = iter(self.dataloader)
-            return next(self._iter)
-
-
-def transformable(cls: type):
-    """
-    Modify the class to be able to transform the data. Warning: it modifies the class in place.
-
-    Args:
-        cls: initial class
-
-    Returns:
-        modified class
-    """
-    if hasattr(cls, "_getitem"):
-        raise ValueError("The class already has `_getitem` method. Check if it is already transformable.")
-
-    def _with_transforms(self, transforms: Sequence[Callable]):
-        self.transforms = transforms
-        return self
-
-    cls.with_transforms = _with_transforms
-    cls._getitem = cls.__getitem__
-
-    def _getitem(self, *args, **kwargs):
-        x = cls._getitem(self, *args, **kwargs)
-        trfm = getattr(self, "transforms", [])
-        for t in trfm:
-            x = t(x)
-        return x
-
-    cls.__getitem__ = _getitem
-    return cls
-
-
-@transformable
-class UnionDataset(Dataset):
-    __slots__ = ["datasets"]
-    def __init__(self, datasets: Sequence[Dataset]):
-        self.datasets = datasets
-
-    def __len__(self):
-        return min([len(d) for d in self.datasets])
-
-    def __getitem__(self, index: int):
-        return tuple(d[index] for d in self.datasets)
+DTYPE_SIZES = {
+    str(dtype).split(".")[1]: torch.tensor(0, dtype=dtype).element_size()
+    for dtype in get_all_dtypes(include_bfloat16=False)
+}
 
 
 @transformable
 class SequenceDataset(Dataset):
-    _required_attrs = {'dtype', 'dtype_size', 'shape'}
-    __slots__ = ["_file", "_attrs", "_element_size", "_length", "_offset"] + [f"_{a}" for a in _required_attrs]
+    _required_attrs = {'_dtype', '_shape'}
+    __slots__ = ["_file", "_attrs", "_element_size", "_length", "_offset"] + list(_required_attrs)
 
     def __init__(self,
                  path: Union[str, Path],
@@ -117,15 +64,17 @@ class SequenceDataset(Dataset):
     def _read_attrs(self, byte_str: bytes):
         try:
             sep_ix = byte_str.find(self._sentinel)
+            if sep_ix == -1:
+                raise RuntimeError
             self._attrs.update(json.loads(byte_str[:sep_ix]))
             if not self._attrs.keys() >= SequenceDataset._required_attrs:
                 raise KeyError
             for key in SequenceDataset._required_attrs:
-                setattr(self, f"_{key}", self._attrs[key])
-            self._element_size = int(self._dtype_size * np.prod(self._shape))
+                setattr(self, key, self._attrs[key])
+            self._element_size = int(DTYPE_SIZES[self._dtype] * np.prod(self._shape))
             self._length = (self._file.stat().st_size - sep_ix - 1) // self._element_size
             self._offset = sep_ix + 1
-        except:
+        except Exception as e:
             warnings.warn(f"reading metadata for {self.file} has failed. "
                           f"If writing is attempted, the file will be overwritten.")
 
@@ -141,7 +90,7 @@ class SequenceDataset(Dataset):
     def __len__(self) -> int:
         return self._length
 
-    def __getitem__(self, index: int) -> torch.Tensor:
+    def __getitem__(self, index: Union[int, slice]) -> torch.Tensor:
         if isinstance(index, slice):
             start = index.start if (index.start is not None) else 0
             stop = index.stop if (index.stop is not None) else self._length
@@ -162,13 +111,15 @@ class SequenceDataset(Dataset):
             f.seek(self._offset + self._element_size * start)
             byte_str = f.read((stop - start) * self._element_size)
         t = torch.from_numpy(np.frombuffer(byte_str, dtype=self._dtype)).view((stop - start), *self._shape)
+        t = t.squeeze(0) if isinstance(index, int) else t
         return t
 
     @staticmethod
     def _tensor_attrs(t: torch.Tensor) -> dict:
-        return {'dtype': str(t.dtype).split(".")[1],
-                'dtype_size': t.element_size(),
-                'shape': list(t.size())}
+        dtype = str(t.dtype).split(".")[1]
+        assert t.element_size() == DTYPE_SIZES[dtype]
+        return {'_dtype': dtype,
+                '_shape': list(t.size())}
 
     @staticmethod
     def _write(file_path: Path, chunk: Sequence[torch.Tensor], offset: int):
