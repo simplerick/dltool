@@ -1,4 +1,5 @@
 import warnings
+from io import DEFAULT_BUFFER_SIZE
 from multiprocessing import Process
 from typing import Any, Union, Sequence, Callable
 from copy import copy, deepcopy
@@ -58,6 +59,19 @@ def transformable(cls: type):
 
 
 @transformable
+class UnionDataset(Dataset):
+    __slots__ = ["datasets"]
+    def __init__(self, datasets: Sequence[Dataset]):
+        self.datasets = datasets
+
+    def __len__(self):
+        return min([len(d) for d in self.datasets])
+
+    def __getitem__(self, index: int):
+        return tuple(d[index] for d in self.datasets)
+
+
+@transformable
 class SequenceDataset(Dataset):
     _required_attrs = {'dtype', 'dtype_size', 'shape'}
     __slots__ = ["_file", "_attrs", "_element_size", "_length", "_offset"] + [f"_{a}" for a in _required_attrs]
@@ -66,16 +80,23 @@ class SequenceDataset(Dataset):
                  path: Union[str, Path],
                  metadata: dict = None,
                  overwrite: bool = False,
-                 max_metadata_size: int = 1024):
+                 chunk_size: int = DEFAULT_BUFFER_SIZE):
         self._file = Path(path)
         self._attrs = metadata.copy() if isinstance(metadata, dict) else {}
         self._element_size = 0
         self._length = 0
         self._offset = 0
+        self._sentinel = b'\n'
         if metadata is None:
             if self._file.exists():
-                with open(path, "rb") as f:
-                    self._read_attrs(f.read(max_metadata_size))
+                with open(self._file, "rb") as f:
+                    byte_str = []
+                    while True:
+                        chunk = f.read(chunk_size)
+                        byte_str.append(chunk)
+                        if not chunk or self._sentinel in chunk:
+                            break
+                    self._read_attrs(b"".join(byte_str))
             else:
                 raise RuntimeError(f"File {path} does not exist.")
         else:
@@ -95,11 +116,11 @@ class SequenceDataset(Dataset):
 
     def _read_attrs(self, byte_str: bytes):
         try:
-            sep_ix = byte_str.find(b'\n')
+            sep_ix = byte_str.find(self._sentinel)
             self._attrs.update(json.loads(byte_str[:sep_ix]))
             if not self._attrs.keys() >= SequenceDataset._required_attrs:
                 raise KeyError
-            for key in self._attrs:
+            for key in SequenceDataset._required_attrs:
                 setattr(self, f"_{key}", self._attrs[key])
             self._element_size = int(self._dtype_size * np.prod(self._shape))
             self._length = (self._file.stat().st_size - sep_ix - 1) // self._element_size
@@ -111,7 +132,7 @@ class SequenceDataset(Dataset):
     def _write_metadata(self, metadata: dict):
         if self._file.exists():
             self._file.unlink()
-        byte_str = json.dumps(metadata).encode("utf-8") + b'\n'
+        byte_str = json.dumps(metadata).encode("utf-8") + self._sentinel
         with open(self._file, "wb") as file:
             file.write(byte_str)
             file.flush()
