@@ -2,17 +2,23 @@ import warnings
 import torch
 import numpy as np
 
+from dltool.algorithm import Algorithm
 from dltool.data import DataIterator
 from dltool.log import Logger
-from dltool.utils import to, detach, evaluating, cpu_state_dict
+from dltool.utils import to, evaluating, cpu_state_dict
 
 
 class Trainer:
-    def __init__(self, algorithm, optimizer=None, scheduler=None, logger=None, val_check_interval=1.0, log_interval=10):
+    def __init__(self, algorithm: Algorithm,
+                 optimizer: torch.optim.Optimizer = None,
+                 scheduler: object = None,
+                 logger: Logger = None,
+                 val_check_interval: int = 1.0
+                 ):
         self.algorithm = algorithm
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.logger = Logger(logger, log_interval)
+        self.logger = logger if logger is not None else Logger(None)
         self.val_check_interval = val_check_interval
         self.device = next(self.algorithm.parameters(), torch.empty(0)).device
         self._step_count = 0
@@ -38,11 +44,10 @@ class Trainer:
             if loss is not None and loss.requires_grad:
                 self.opt_step(loss, self.optimizer, self.scheduler)
             # log metrics
-            metrics = detach(metrics)  # detach tensors if they are attached to graph
             metrics = to(metrics, device='cpu')
             fn_name = step_fn.__name__
             self.logger.log(metrics, self._step_count, group=fn_name,
-                            flush=(batch_idx == num_steps-1 and fn_name != 'train_step'))
+                            write=(fn_name in ['val_step', 'test_step'] and batch_idx == num_steps - 1))
             if fn_name == 'train_step':
                 self._step_count += 1
                 self.logger.log({"Epoch": self._step_count / len(dataloader)}, self._step_count)
@@ -63,7 +68,6 @@ class Trainer:
                 continue
             self.loop(len(chunk), train_iterator, self.algorithm.train_step)
             if val_dataloader is not None:
-                print("Start validation", self._step_count)
                 with evaluating(self.algorithm):
                     self.loop(len(val_dataloader), val_iterator, self.algorithm.val_step)
             # hooks
