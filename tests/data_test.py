@@ -5,8 +5,9 @@ from pathlib import Path
 from random import Random
 
 import torch
+import pandas as pd
 
-from dltool.data import SequenceDataset, transformable
+from dltool.data import FileSequenceDataset, transformable, TimeWindowsSequence
 
 SEED = 123456789
 
@@ -24,7 +25,7 @@ def _new_data(random, length=10):
 
 
 
-class TestSequenceDataset(unittest.TestCase):
+class TestFileSequenceDataset(unittest.TestCase):
     def setUp(self):
         self.random = Random(SEED)
         self.torch_gen = torch.random.manual_seed(SEED)
@@ -46,10 +47,10 @@ class TestSequenceDataset(unittest.TestCase):
         data = _new_data(self.torch_gen)
         metadata = _new_metadata(self.random)
         # check creating, writing, and loading works
-        dataset = SequenceDataset(path, metadata)
+        dataset = FileSequenceDataset(path, metadata)
         dataset.write(data, processes=2)
         self._check_data(dataset, data, metadata)
-        dataset2 = SequenceDataset(path)
+        dataset2 = FileSequenceDataset(path)
         self._check_data(dataset2, data, dataset.metadata)
         # try to write to a specific index
         dataset.write(data[6:10], index=3, processes=2)
@@ -62,18 +63,18 @@ class TestSequenceDataset(unittest.TestCase):
         Checks that if metadata is not provided and the file does not exist, the error is raised.
         """
         path = self.tmp_dir_path / "test_overwrite_and_loading.seq"
-        dataset = SequenceDataset(path, _new_metadata(self.random))
+        dataset = FileSequenceDataset(path, _new_metadata(self.random))
         dataset.write(_new_data(self.torch_gen))
         new_metadata = _new_metadata(self.random)
         new_data = _new_data(self.torch_gen)
         with self.assertRaises(RuntimeError):
-            SequenceDataset(path, new_metadata, overwrite=False)
-        dataset = SequenceDataset(path, new_metadata, overwrite=True)
+            FileSequenceDataset(path, new_metadata, overwrite=False)
+        dataset = FileSequenceDataset(path, new_metadata, overwrite=True)
         dataset.write(new_data)
         self._check_data(dataset, new_data, new_metadata)
-        SequenceDataset(path)
+        FileSequenceDataset(path)
         with self.assertRaises(RuntimeError):
-            SequenceDataset(path.parent / "non_existing_file.seq")
+            FileSequenceDataset(path.parent / "non_existing_file.seq")
 
 
 
@@ -114,8 +115,85 @@ class TestTransformable(unittest.TestCase):
 
 
 
+class TestTimeWindowsSequence(unittest.TestCase):
+    def setUp(self):
+        class TimeSeq(pd.DatetimeIndex): pass
+
+        start_time = pd.Timestamp("2022-01-01 00:00:00")
+        time_delta = pd.Timedelta(1, "h")
+        ts = TimeSeq([start_time + i * time_delta for i in range(10)])
+        ts.start_time, ts.time_delta = start_time, time_delta
+        ts.end_time = ts.start_time + len(ts) * ts.time_delta  # 2022-01-01 10:00:00
+
+        small_delta = pd.Timedelta(1, 's')
+        start_time2 = ts.start_time + small_delta  # 2022-01-01 00:00:01
+        time_delta2 = 2 * ts.time_delta
+        ts2 = TimeSeq([start_time2 + i * time_delta2 for i in range(10)])
+        ts2.start_time, ts2.time_delta = start_time2, time_delta2
+        ts2.end_time = ts2.start_time + len(ts2) * ts2.time_delta  # 2022-01-01 20:00:01
+
+        stride = pd.Timedelta(30, 'm')
+        intervals = [ts2.time_delta, 2 * ts2.time_delta] # 2h, 4h
+        self.time_window_seq = TimeWindowsSequence([ts, ts2], intervals, stride=stride)
 
 
+    def test_date_range(self):
+        self.assertEqual(self.time_window_seq.start, pd.Timestamp("2022-01-01 00:00:01"))
+        self.assertEqual(self.time_window_seq.end, pd.Timestamp("2022-01-01 10:00:00"))
+        self.assertSequenceEqual(self.time_window_seq.intervals, [pd.Timedelta(2, 'h'), pd.Timedelta(4, 'h')])
+        self.assertEqual(self.time_window_seq.reduce_s, False)
+        self.assertEqual(self.time_window_seq.reduce_i, False)
+        self.assertTrue(
+            (self.time_window_seq.date_range == pd.date_range(self.time_window_seq.start, self.time_window_seq.end,
+                                                              freq="30min", inclusive='left')).all())
+
+    def test_len(self):
+        self.assertEqual(len(self.time_window_seq), 8)
+
+    def test_getitem_get_dates(self):
+        def check(x, y):
+            [x00, x01], [x10, x11] = x
+            [y00, y01], [y10, y11] = y
+            for a,b in zip([x00, x01, x10, x11], [y00, y01, y10, y11]):
+                self.assertTrue((a == b).all())
+
+        el0 = [
+            [pd.DatetimeIndex(['2022-01-01 01:00:00', '2022-01-01 02:00:00']),
+             pd.DatetimeIndex(['2022-01-01 00:00:01'])],
+            [pd.DatetimeIndex(['2022-01-01 03:00:00', '2022-01-01 04:00:00', '2022-01-01 05:00:00', '2022-01-01 06:00:00']),
+             pd.DatetimeIndex(['2022-01-01 02:00:01', '2022-01-01 04:00:01'])]
+        ]
+        check(self.time_window_seq[0], el0)
+        check(self.time_window_seq.get_dates(0), el0)
+
+        el3 = [
+            [pd.DatetimeIndex(['2022-01-01 02:00:00', '2022-01-01 03:00:00']),
+             pd.DatetimeIndex(['2022-01-01 02:00:01'])],
+            [pd.DatetimeIndex(['2022-01-01 04:00:00', '2022-01-01 05:00:00', '2022-01-01 06:00:00', '2022-01-01 07:00:00']),
+             pd.DatetimeIndex(['2022-01-01 04:00:01', '2022-01-01 06:00:01'])]
+        ]
+        check(self.time_window_seq[3], el3)
+        check(self.time_window_seq.get_dates(3), el3)
+
+        for i in range(len(self.time_window_seq)):
+            left_bound = self.time_window_seq.date_range[i]
+            right_bound = left_bound + sum(self.time_window_seq.intervals, pd.Timedelta(0))
+            el = self.time_window_seq.get_dates(i)
+            for x in el:
+                for y in x:
+                    self.assertTrue(left_bound <= y[0] and y[-1] < right_bound)
+
+    def test_get_indices_from_timerange_and_dates(self):
+        left_bound = pd.Timestamp("2022-01-01 03:30:00")
+        right_bound = pd.Timestamp("2022-01-01 08:40:00")
+        indices_timerange = self.time_window_seq.get_indices_from_timerange(left_bound, right_bound)
+        indices_dates = self.time_window_seq.get_indices_from_dates([left_bound, right_bound])
+        self.assertEqual(indices_timerange, range(*indices_dates))
+        for i in indices_timerange:
+            el = self.time_window_seq.get_dates(i)
+            for x in el:
+                for y in x:
+                    self.assertTrue(left_bound <= y[0] and y[-1] < right_bound)
 
 
 if __name__ == "__main__":
