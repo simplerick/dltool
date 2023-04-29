@@ -1,4 +1,4 @@
-from typing import Callable, Union, List
+from collections.abc import Callable
 import torch
 from contextlib import contextmanager
 
@@ -78,7 +78,7 @@ def cpu_state_dict(model: torch.nn.Module) -> dict:
     return to(model.state_dict(), device='cpu')
 
 
-def cartesian_prod(*tensors: Union[torch.Tensor, List[torch.Tensor]]) -> torch.Tensor:
+def cartesian_prod(*tensors: torch.Tensor) -> torch.Tensor:
     """
     Cartesian product of tensors. The same as torch.cartesian_prod but works with 0D, 1D and 2D tensors and returns 2D tensor.
     If tensor is 2D, its rows are considered as one-piece elements of product, i.e. concated to the rows of the result cartesian product.

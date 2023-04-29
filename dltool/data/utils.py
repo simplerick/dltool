@@ -1,4 +1,4 @@
-from typing import Sequence, Callable
+from collections.abc import Sequence, Callable
 
 
 class DataIterator:

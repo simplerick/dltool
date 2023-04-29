@@ -1,10 +1,10 @@
 import numpy as np
 import torch
-from typing import Union, Sequence
+from collections.abc import Sequence
 
 
 def scale(t: torch.Tensor, min_value: float = 0, max_value: float = 1,
-          dim: Union[int, Sequence[int]] = None, q: float = None) -> torch.Tensor:
+          dim: int | Sequence[int] = None, q: float = None) -> torch.Tensor:
     """
     Scales the tensor values so that they lie between specified boundary values.
 
@@ -42,8 +42,8 @@ def scale(t: torch.Tensor, min_value: float = 0, max_value: float = 1,
 def make_grid(
         t: torch.Tensor,
         ncols: int = 8,
-        pad: Union[Sequence, int] = 1,
-        pad_value: Union[Sequence, float] = 0,
+        pad: Sequence | int = 1,
+        pad_value: Sequence | float = 0,
         normalize: bool = False,
         quantile: float = None,
         channel_dim: int = 1,

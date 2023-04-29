@@ -1,3 +1,4 @@
 from .utils import transformable, DataIterator
 from .union import UnionDataset
-from .sequence import SequenceDataset
+from .file import FileSequenceDataset
+from .time import TimeWindowSequence, TimeWindowsSequence

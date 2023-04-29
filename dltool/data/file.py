@@ -4,7 +4,7 @@ from copy import deepcopy
 from io import DEFAULT_BUFFER_SIZE
 from multiprocessing import Process
 from pathlib import Path
-from typing import Union, Sequence
+from collections.abc import Sequence
 import numpy as np
 import torch
 from torch.utils.data import Dataset
@@ -19,12 +19,12 @@ DTYPE_SIZES = {
 
 
 @transformable
-class SequenceDataset(Dataset):
+class FileSequenceDataset(Dataset, Sequence):
     _required_attrs = {'_dtype', '_shape'}
     __slots__ = ["_file", "_attrs", "_element_size", "_length", "_offset"] + list(_required_attrs)
 
     def __init__(self,
-                 path: Union[str, Path],
+                 path: str | Path,
                  metadata: dict = None,
                  overwrite: bool = False,
                  chunk_size: int = DEFAULT_BUFFER_SIZE):
@@ -67,9 +67,9 @@ class SequenceDataset(Dataset):
             if sep_ix == -1:
                 raise RuntimeError
             self._attrs.update(json.loads(byte_str[:sep_ix]))
-            if not self._attrs.keys() >= SequenceDataset._required_attrs:
+            if not self._attrs.keys() >= FileSequenceDataset._required_attrs:
                 raise KeyError
-            for key in SequenceDataset._required_attrs:
+            for key in FileSequenceDataset._required_attrs:
                 setattr(self, key, self._attrs[key])
             self._element_size = int(DTYPE_SIZES[self._dtype] * np.prod(self._shape))
             self._length = (self._file.stat().st_size - sep_ix - 1) // self._element_size
@@ -90,7 +90,7 @@ class SequenceDataset(Dataset):
     def __len__(self) -> int:
         return self._length
 
-    def __getitem__(self, index: Union[int, slice]) -> torch.Tensor:
+    def __getitem__(self, index: int | slice) -> torch.Tensor:
         if isinstance(index, slice):
             start = index.start if (index.start is not None) else 0
             stop = index.stop if (index.stop is not None) else self._length
