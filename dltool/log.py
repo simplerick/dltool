@@ -131,22 +131,23 @@ class Logger:
             # average scalar metrics
             scalar_metric_names = [m for m in metrics_to_write if self._data_types[g][m] in [float, int]]
             scalar_metrics.update({g_str + n: m for n, m in
-                                   summarize(data, self.scalar_aggregation, names=scalar_metric_names, pop=True).items()})
+                summarize(data, self.scalar_aggregation, names=scalar_metric_names, pop=True).items()})
             # stack tensor metrics
             tensor_metric_names = [m for m in metrics_to_write if self._data_types[g][m] == torch.Tensor]
-            tensor_metrics.update({g_str + n: m for n, m in
-                                   summarize(data, self.tensor_aggregation, names=tensor_metric_names, pop=True).items()})
+            if tensor_metric_names:
+                tensor_metrics[g_str] = {n: m for n, m in
+                    summarize(data, self.tensor_aggregation, names=tensor_metric_names, pop=True).items()}
         # log scalar metrics
         if scalar_metrics:
             self.api.log(scalar_metrics, step)
             for n, v in scalar_metrics.items():
                 self.history[n].append(v)
-        # save tensor metrics as artifacts (torch.tensor as wandb.Artifact)
+        # save tensor metrics as artifact (dict with torch.tensors as wandb.Artifact)
         if tensor_metrics:
             artifact = self.api.Artifact(f"{self.api.run.id}_{step}", type='tensor')
-            for n, m in tensor_metrics.items():
-                with artifact.new_file(f"{n}.pt", mode='wb') as f:
-                    torch.save(m, f)
+            for g_str, metrics in tensor_metrics.items():
+                with artifact.new_file(g_str + "metrics.pt", mode='wb') as f:
+                    torch.save(metrics, f)
             self.api.log_artifact(artifact)
 
     def plot(self, x_key, y_key, group=None, stroke=None, title=None):
