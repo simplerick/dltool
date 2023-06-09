@@ -32,9 +32,15 @@ class TestFileSequenceDataset(unittest.TestCase):
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.tmp_dir_path = Path(self.tmp_dir.name)
 
+    def _check_metadata(self, m1, m2):
+        self.assertEqual(
+            {k: v for k, v in m1.items() if k not in FileSequenceDataset._required_attrs}.items(),
+            {k: v for k, v in m2.items() if k not in FileSequenceDataset._required_attrs}.items()
+        )
+
     def _check_data(self, dataset, data, metadata = None):
         if metadata is not None:
-            self.assertTrue(metadata.items() <= dataset.metadata.items())
+            self._check_metadata(metadata, dataset.metadata)
         self.assertEqual(len(dataset), len(data))
         self.assertTrue((dataset[:] == data).all())
 
@@ -59,21 +65,31 @@ class TestFileSequenceDataset(unittest.TestCase):
 
     def test_overwrite_and_loading(self):
         """
-        Checks that if metadata is provided, the file will be overwritten or not depending on the `overwrite` flag.
+        Checks that if file is exists, the file will be overwritten or not depending on the `overwrite` flag.
         Checks that if metadata is not provided and the file does not exist, the error is raised.
         """
         path = self.tmp_dir_path / "test_overwrite_and_loading.seq"
-        dataset = FileSequenceDataset(path, _new_metadata(self.random))
-        dataset.write(_new_data(self.torch_gen))
+        metadata = _new_metadata(self.random)
+        data = _new_data(self.torch_gen)
+        dataset = FileSequenceDataset(path, metadata)
+        dataset.write(data)
         new_metadata = _new_metadata(self.random)
         new_data = _new_data(self.torch_gen)
-        with self.assertRaises(RuntimeError):
-            FileSequenceDataset(path, new_metadata, overwrite=False)
+
+        dataset = FileSequenceDataset(path, new_metadata)
+        self._check_data(dataset, data, metadata | new_metadata)
+
+        for attr in FileSequenceDataset._required_attrs:
+            with self.assertWarns(Warning):
+                dataset = FileSequenceDataset(path, {attr: None}, overwrite=False)
+                self.assertTrue(dataset._attrs[attr] is None)
+
         dataset = FileSequenceDataset(path, new_metadata, overwrite=True)
         dataset.write(new_data)
         self._check_data(dataset, new_data, new_metadata)
         FileSequenceDataset(path)
-        with self.assertRaises(RuntimeError):
+
+        with self.assertRaises(FileNotFoundError):
             FileSequenceDataset(path.parent / "non_existing_file.seq")
 
 

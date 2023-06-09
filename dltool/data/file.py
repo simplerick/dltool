@@ -29,13 +29,16 @@ class FileSequenceDataset(Dataset, Sequence):
                  overwrite: bool = False,
                  chunk_size: int = DEFAULT_BUFFER_SIZE):
         self._file = Path(path)
-        self._attrs = metadata.copy() if isinstance(metadata, dict) else {}
+        self._attrs = {}
         self._element_size = 0
-        self._length = 0
         self._offset = 0
+        self._length = 0
         self._sentinel = b'\n'
-        if metadata is None:
-            if self._file.exists():
+
+        if self._file.exists():
+            if overwrite:
+                warnings.warn(f"file {path} already exists and will be overwritten")
+            else:
                 with open(self._file, "rb") as f:
                     byte_str = []
                     while True:
@@ -44,14 +47,14 @@ class FileSequenceDataset(Dataset, Sequence):
                         if not chunk or self._sentinel in chunk:
                             break
                     self._read_attrs(b"".join(byte_str))
-            else:
-                raise RuntimeError(f"File {path} does not exist.")
         else:
-            if self._file.exists():
-                if overwrite:
-                    warnings.warn(f"File {path} already exists and will be overwritten")
-                else:
-                    raise RuntimeError(f"File {path} already exists. Use overwrite=True to overwrite it")
+            if metadata is None:
+                raise FileNotFoundError(f"file {path} does not exist.")
+        if metadata is not None:
+            self.update_attrs(metadata)
+            if metadata.keys() & FileSequenceDataset._required_attrs:
+                warnings.warn(f"using {FileSequenceDataset._required_attrs} from the passed metadata. "
+                              f"The file data may be decoded incorrectly.")
 
     @property
     def file(self):
@@ -61,22 +64,24 @@ class FileSequenceDataset(Dataset, Sequence):
     def metadata(self):
         return deepcopy(self._attrs)
 
+    def update_attrs(self, attrs):
+        self._attrs.update(attrs)
+        for key in FileSequenceDataset._required_attrs & self._attrs.keys():
+            setattr(self, key, self._attrs[key])
+
     def _read_attrs(self, byte_str: bytes):
         try:
             sep_ix = byte_str.find(self._sentinel)
             if sep_ix == -1:
                 raise RuntimeError
-            self._attrs.update(json.loads(byte_str[:sep_ix]))
+            self.update_attrs(json.loads(byte_str[:sep_ix]))
             if not self._attrs.keys() >= FileSequenceDataset._required_attrs:
-                raise KeyError
-            for key in FileSequenceDataset._required_attrs:
-                setattr(self, key, self._attrs[key])
+                raise KeyError(f"metadata {self._attrs.keys()} doesn't contain required fields {FileSequenceDataset._required_attrs}")
             self._element_size = int(DTYPE_SIZES[self._dtype] * np.prod(self._shape))
             self._length = (self._file.stat().st_size - sep_ix - 1) // self._element_size
             self._offset = sep_ix + 1
         except Exception as e:
-            warnings.warn(f"reading metadata for {self.file} has failed. "
-                          f"If writing is attempted, the file will be overwritten.")
+            warnings.warn(f"metadata for {self.file} is corrupted: \n{e}. If writing is attempted, the file will be overwritten!")
 
     def _write_metadata(self, metadata: dict):
         if self._file.exists():
