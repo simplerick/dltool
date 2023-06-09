@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dltool"
+version = "1.0"
+authors = [
+  { name="Artem Mikhaylov", email="simplerick@yandex.com" },
+]
+description = "A small library with handy methods for DL with Pytorch"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+]
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[project.urls]
+"Homepage" = "https://github.com/simplerick/dltool"
+"Bug Tracker" = "https://github.com/simplerick/dltool/issues"
