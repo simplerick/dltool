@@ -25,9 +25,6 @@ class Trainer:
         self.best_model_state = None
         self.val_hooks = []
 
-    def fix_best_state(self):
-        self.best_model_state = cpu_state_dict(self.algorithm)
-
     def opt_step(self, loss, optimizer, scheduler):
         loss.backward()
         optimizer.step()
@@ -87,13 +84,6 @@ class Trainer:
         # testing loop
         with evaluating(self.algorithm):
             self.loop(len(test_dataloader), test_iterator, self.algorithm.test_step)
-
-    def set_model_checkpointer(self, metric, select_fn=min):
-        def save_model_checkpoints(obj):
-            if len(obj.logger.history[metric]) > 0 and select_fn(self.logger.history[metric]) == self.logger.history[metric][-1]:
-                obj.fix_best_state()
-        self.val_hooks.append(save_model_checkpoints)
-
 
     # def sanity_check(self, batch, max_iter=100, criterion=1e-4):
     #     dl = torch.utils.data.DataLoader([batch])
