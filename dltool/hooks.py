@@ -14,6 +14,8 @@ def watch_best_state_hook(metric: str, select_fn: Callable = min):
 
 
 def save_state_hook(path: str | Path, best: bool = True):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     def hook(trainer):
         state = trainer.best_model_state if best else cpu_state_dict(trainer.algorithm)
         if state is not None:
