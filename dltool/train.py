@@ -5,7 +5,11 @@ import numpy as np
 from dltool.algorithm import Algorithm
 from dltool.data import DataIterator
 from dltool.log import Logger
-from dltool.utils import to, evaluating, cpu_state_dict
+from dltool.utils import to, evaluating
+
+
+class StopSignal(Exception):
+    pass
 
 
 class Trainer:
@@ -23,7 +27,7 @@ class Trainer:
         self.device = next(self.algorithm.parameters(), torch.empty(0)).device
         self._step_count = 0
         self.best_model_state = None
-        self.val_hooks = []
+        self.hooks = []
 
     def opt_step(self, loss, optimizer, scheduler):
         loss.backward()
@@ -69,10 +73,10 @@ class Trainer:
                     self.loop(len(val_dataloader), val_iterator, self.algorithm.val_step)
             # hooks
             try:
-                for fn in self.val_hooks:
+                for fn in self.hooks:
                     fn(self)
-            except Exception as e:
-                warnings.warn(str(e))
+            except StopSignal as e:  # allows to stop training from hook
+                self.logger.console_logger.info(f"{e.__class__.__name__}: {e}" if e.args else f"{e.__class__.__name__}")
                 break
         # load best model if any is saved
         if self.best_model_state is not None:
