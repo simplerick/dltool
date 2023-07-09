@@ -107,7 +107,12 @@ class TestTransformable(unittest.TestCase):
             def __getitem__(self, index):
                 return self.data[index]
 
+        @transformable
+        class A:
+            pass
+
         self.transformable_class = TensorDataset
+        self.no_getitem_class = A
 
     def test_transform(self):
         """Checks that the transforms are applied to the data"""
@@ -116,9 +121,11 @@ class TestTransformable(unittest.TestCase):
         transform2 = lambda x: 2 * x
         ds = self.transformable_class(data)
         self.assertTrue(not hasattr(ds, "transforms"))
-        ds = ds.with_transforms([transform1, transform2])
+        ds.with_transforms([transform1, transform2])
         self.assertTrue(ds.transforms == [transform1, transform2])
         self.assertTrue((ds[:] == transform2(transform1(data))).all())
+        ds = self.no_getitem_class()
+        self.assertTrue(not hasattr(ds, "with_transforms"))
 
     def test_instance_sharing(self):
         """Check that the transforms are not shared between instances"""

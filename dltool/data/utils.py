@@ -17,34 +17,26 @@ class DataIterator:
             return next(self._iter)
 
 
-def transformable(cls: type):
+def transformable(cls: type) -> type:
     """
-    Modify the class to be able to transform the data. Warning: it modifies the class in place.
-
-    Args:
-        cls: initial class
-
-    Returns:
-        modified class
+    Modifies the given class in-place to enable data transformation.
+    The transformed class will have a `with_transforms` method that attaches a sequence of transforms to the instance.
+    The transforms will be applied to the data returned by the `__getitem__` method of the instance.
     """
-    if hasattr(cls, "_getitem"):
-        raise ValueError("The class already has `_getitem` method. Check if it is already transformable.")
-
     def _with_transforms(self, transforms: Sequence[Callable]):
         self.transforms = transforms
         return self
 
-    cls.with_transforms = _with_transforms
-    cls._getitem = cls.__getitem__
-
     def _getitem(self, *args, **kwargs):
-        x = cls._getitem(self, *args, **kwargs)
-        trfm = getattr(self, "transforms", [])
-        for t in trfm:
-            x = t(x)
+        x = __getitem__(self, *args, **kwargs)
+        if ts := getattr(self, "transforms", None):
+            for t in ts:
+                x = t(x)
         return x
 
-    cls.__getitem__ = _getitem
+    if hasattr(cls, "__getitem__") and not hasattr(cls, "with_transforms"):
+        __getitem__ = cls.__getitem__
+        cls.__getitem__ = _getitem
+        cls.with_transforms = _with_transforms
     return cls
-
 
