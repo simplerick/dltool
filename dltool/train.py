@@ -76,7 +76,7 @@ class Trainer:
                 for fn in self.hooks:
                     fn(self)
             except StopSignal as e:  # allows to stop training from hook
-                self.logger.console_logger.info(f"{e.__class__.__name__}: {e}" if e.args else f"{e.__class__.__name__}")
+                self.logger.console.info(f"{e.__class__.__name__}: {e}" if e.args else f"{e.__class__.__name__}")
                 break
         # load best model if any is saved
         if self.best_model_state is not None:

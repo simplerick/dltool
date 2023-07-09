@@ -1,9 +1,11 @@
 from collections.abc import Callable
 import torch
 from contextlib import contextmanager
+import re
 
 
 class FuncModule(torch.nn.Module):
+    """Torch module from function"""
     def __init__(self, func: Callable):
         super().__init__()
         self.forward = func
@@ -28,7 +30,7 @@ def apply(obj: object, func_str: str, **args) -> object:
     if hasattr(obj, func_str):
         obj = getattr(obj, func_str)(**args)
     else:
-        if isinstance(obj, list):
+        if isinstance(obj, (list, tuple)):
             obj[:] = [apply(x, func_str, **args) for x in obj]
         if isinstance(obj, dict):
             for k in obj:
@@ -81,7 +83,7 @@ def cpu_state_dict(model: torch.nn.Module) -> dict:
 def cartesian_prod(*tensors: torch.Tensor) -> torch.Tensor:
     """
     Cartesian product of tensors. The same as torch.cartesian_prod but works with 0D, 1D and 2D tensors and returns 2D tensor.
-    If tensor is 2D, its rows are considered as one-piece elements of product, i.e. concated to the rows of the result cartesian product.
+    If tensor is 2D, its rows are considered as one-piece elements of product, i.e. concatenated to the rows of the result cartesian product.
 
     Example:
         a = torch.tensor([[1, 2], [3, 4]])
@@ -113,7 +115,6 @@ def cartesian_prod(*tensors: torch.Tensor) -> torch.Tensor:
     return prod
 
 
-# context manager for evaluating
 @contextmanager
 def evaluating(model: torch.nn.Module):
     """
@@ -132,3 +133,34 @@ def evaluating(model: torch.nn.Module):
             # restore initial training state
             for k, v in train_state.items():
                 k.training = v
+
+
+def flatten_dict(d: dict, sep: str = "."):
+    """
+    Flatten a nested dictionary to a dictionary with keys like "a.b.c".
+    """
+    flattened_d = {}
+    for k, v in d.items():
+        if isinstance(v, dict):
+            flattened_v = flatten_dict(v, sep)
+            for k2, v2 in flattened_v.items():
+                flattened_d[f"{k}{sep}{k2}"] = v2
+        else:
+            flattened_d[k] = v
+    return flattened_d
+
+
+def unflatten_dict(d: dict, sep: str = ".", regex: bool = False):
+    """
+    Unflatten a dictionary with keys like "a.b.c" to a nested dictionary. Supports regex separators.
+    """
+    unflattened_d = {}
+    for k, v in d.items():
+        k_lvls = re.split(sep, k) if regex else k.split(sep)
+        cur_d = unflattened_d
+        for l in k_lvls[:-1]:
+            if l not in cur_d:
+                cur_d[l] = {}
+            cur_d = cur_d[l]
+        cur_d[k_lvls[-1]] = unflatten_dict(v, sep, regex) if isinstance(v, dict) else v
+    return unflattened_d
