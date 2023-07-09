@@ -7,7 +7,8 @@ from dltool.utils import cpu_state_dict
 
 def watch_best_state_hook(metric: str, select_fn: Callable = min):
     def hook(trainer):
-        metric_values = trainer.logger.history[metric]
+        history = trainer.logger.history or {}
+        metric_values = history.get(metric)
         if len(metric_values) > 0 and select_fn(metric_values) == metric_values[-1]:
             trainer.best_model_state = cpu_state_dict(trainer.algorithm)
     return hook
