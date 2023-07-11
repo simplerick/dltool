@@ -3,5 +3,5 @@
 
 # Run unit tests:
 ```
-python -m unittest discover -s tests -p '*_test.py'
+python3 -m pytest -W ignore::Warning  --durations=5  --cov=dltool
 ```
