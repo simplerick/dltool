@@ -57,7 +57,7 @@ class TimeWindowSequence:
 
     def __getitem__(self, index: int) -> list[Sequence] | Sequence:
         if isinstance(index, slice):
-            return NotImplemented
+            raise NotImplementedError
         pos = self._get_index_positions(index)
         seqs = [self.sequence[pos[i]:pos[i + 1]] for i in range(len(pos) - 1)]
         if self.reduce:
@@ -108,7 +108,7 @@ class TimeWindowsSequence:
 
     def __getitem__(self, index: int) -> list[Sequence] | Sequence:
         if isinstance(index, slice):
-            return NotImplemented
+            raise NotImplementedError
         slices = [s[index] for s in self.slice_seq]  # [sequences, intervals]
         # transpose
         seqs = [[s[i] for s in slices] for i in range(len(self.intervals))]  # [intervals, sequences]
